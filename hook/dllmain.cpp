@@ -169,6 +169,15 @@ bool CaptureFrameDX11(IDXGISwapChain* swapChain) {
     D3D11_TEXTURE2D_DESC desc;
     backBuffer->GetDesc(&desc);
     
+    // ⭐ Format tespiti — RGBA mı BGRA mı?
+    // 0 = BGRA (B8G8R8A8_UNORM), 1 = RGBA (R8G8B8A8_UNORM)
+    UINT32 pixFmt = 0;  // default BGRA
+    if (desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+        desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
+        desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) {
+        pixFmt = 1;  // RGBA
+    }
+    
     if (!g_d3d11StagingTex || g_d3d11LastW != (int)desc.Width || g_d3d11LastH != (int)desc.Height) {
         if (g_d3d11StagingTex) { g_d3d11StagingTex->Release(); g_d3d11StagingTex = nullptr; }
         D3D11_TEXTURE2D_DESC sd = desc;
@@ -179,7 +188,8 @@ bool CaptureFrameDX11(IDXGISwapChain* swapChain) {
         hr = g_d3d11Device->CreateTexture2D(&sd, nullptr, &g_d3d11StagingTex);
         if (FAILED(hr)) { backBuffer->Release(); return false; }
         g_d3d11LastW = desc.Width; g_d3d11LastH = desc.Height;
-        char info[64]; sprintf_s(info, "DX11 Staging: %dx%d", desc.Width, desc.Height);
+        char info[96]; sprintf_s(info, "DX11 Staging: %dx%d format=%d (%s)",
+            desc.Width, desc.Height, desc.Format, pixFmt == 1 ? "RGBA" : "BGRA");
         WriteLog(info);
     }
     
@@ -189,7 +199,7 @@ bool CaptureFrameDX11(IDXGISwapChain* swapChain) {
     hr = g_d3d11Context->Map(g_d3d11StagingTex, 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) { backBuffer->Release(); return false; }
     
-    WriteFrameToSHM(g_d3d11LastW, g_d3d11LastH, mapped.pData, mapped.RowPitch);
+    WriteFrameToSHM(g_d3d11LastW, g_d3d11LastH, mapped.pData, mapped.RowPitch, pixFmt);
     g_d3d11Context->Unmap(g_d3d11StagingTex, 0);
     backBuffer->Release();
     return true;
@@ -301,7 +311,14 @@ bool CaptureFrameDX12(IDXGISwapChain3* swapChain) {
     void* mapped = nullptr;
     D3D12_RANGE readRange = { 0, (size_t)(g_d3d12RowPitch * h) };
     if (SUCCEEDED(g_d3d12StagingBuffer->Map(0, &readRange, &mapped))) {
-        WriteFrameToSHM(w, h, mapped, (int)g_d3d12RowPitch);
+        // ⭐ Format tespiti — RGBA mı BGRA mı?
+        UINT32 pixFmt = 0;  // default BGRA
+        if (desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+            desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
+            desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) {
+            pixFmt = 1;  // RGBA
+        }
+        WriteFrameToSHM(w, h, mapped, (int)g_d3d12RowPitch, pixFmt);
         D3D12_RANGE writeRange = { 0, 0 };
         g_d3d12StagingBuffer->Unmap(0, &writeRange);
     }
